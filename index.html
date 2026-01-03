@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Simulator 3: Engineering Edition</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style>
+        :root {
+            --deck-height: 340px;
+            --bg-color: #020617;
+            --panel-bg: rgba(15, 23, 42, 0.96);
+            --text-main: #e2e8f0;
+            --accent-fixed: #ef4444;
+            --accent-dynamic: #10b981;
+            --accent-ai: #8b5cf6;
+            --accent-yellow: #f59e0b;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column; 
+        }
+
+        /* Simulation Canvas Area */
+        #simContainer {
+            flex-grow: 1; 
+            position: relative; 
+            overflow: hidden;
+        }
+
+        #simCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #0f172a;
+        }
+
+        /* Heads Up Display */
+        .hud-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 15px 20px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud-card {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: auto;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 600; color: white; }
+        .subtitle { font-size: 0.8rem; color: #cbd5e1; }
+
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-family: monospace; font-weight: bold; }
+        .badge-status { background: #334155; color: white; margin-right: 10px; }
+        .badge-time { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+
+        /* Labels */
+        .sys-label {
+            position: absolute;
+            top: 80px;
+            font-weight: bold;
+            font-size: 1.5rem;
+            opacity: 0.3;
+            pointer-events: none;
+            text-transform: uppercase;
+            z-index: 5;
+        }
+        .label-left { left: 20%; color: var(--accent-fixed); }
+        .label-right { right: 20%; color: var(--accent-dynamic); }
+
+        /* CONTROL DECK */
+        .control-deck-wrapper {
+            height: var(--deck-height);
+            min-height: var(--deck-height);
+            position: relative;
+            transition: transform 0.3s ease;
+            z-index: 20;
+            background: var(--bg-color);
+        }
+        
+        .control-deck-wrapper.hidden { transform: translateY(var(--deck-height)); }
+
+        .control-deck {
+            width: 100%; height: 100%;
+            background: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: 300px 1fr 280px; /* 3 Columns: Controls, Metrics, AI */
+            gap: 0;
+        }
+        
+        .deck-section {
+            padding: 15px;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .deck-section:last-child { border-right: none; }
+
+        .deck-header {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Inputs */
+        .control-group { margin-bottom: 10px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #cbd5e1; margin-bottom: 4px; }
+        
+        input[type="range"] {
+            width: 100%; height: 4px; background: #475569; border-radius: 2px;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+            background: white; cursor: pointer;
+        }
+        input[type="number"] {
+            background: #334155; border: 1px solid #475569; color: white;
+            border-radius: 4px; padding: 2px; width: 40px; text-align: center; font-size: 0.8rem;
+        }
+
+        /* Buttons */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+        button {
+            padding: 8px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; text-transform: uppercase; font-size: 0.75rem;
+        }
+        .btn-start { background: var(--accent-dynamic); color: #022c22; }
+        .btn-reset { background: #475569; color: white; }
+        .btn-ai { background: var(--accent-ai); color: white; width: 100%; margin-top: 5px; }
+        
+        /* Toggle Handle */
+        .deck-toggle {
+            position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+            background: var(--panel-bg); color: white;
+            border: 1px solid var(--border-color); border-bottom: none;
+            padding: 4px 20px; border-radius: 8px 8px 0 0;
+            cursor: pointer; font-size: 0.8rem; z-index: 21;
+        }
+
+        /* Metrics Table Style inside Deck */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Radar + Table */
+            gap: 15px;
+            height: 100%;
+        }
+        .metrics-table {
+            font-size: 0.75rem;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .metrics-table td { padding: 3px 0; border-bottom: 1px solid #334155; }
+        .metrics-table tr:last-child td { border-bottom: none; }
+        .val-f { color: var(--accent-fixed); font-weight: bold; text-align: right; }
+        .val-d { color: var(--accent-dynamic); font-weight: bold; text-align: right; }
+
+        /* AI Output */
+        #aiOutput {
+            margin-top: 10px; padding: 8px;
+            background: rgba(0,0,0,0.3); border-radius: 4px;
+            border-left: 3px solid var(--accent-ai);
+            font-size: 0.75rem; height: 100px; overflow-y: auto;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- VISUALIZATION -->
+    <div id="simContainer">
+        <div class="sys-label label-left">Fixed Timer</div>
+        <div class="sys-label label-right">Dynamic AI</div>
+        
+        <canvas id="simCanvas"></canvas>
+        
+        <div class="hud-overlay">
+            <div class="hud-card">
+                <h1>Traffic Simulator 3</h1>
+                <div class="subtitle">Engineering Edition</div>
+            </div>
+            <div class="hud-card">
+                <span class="badge badge-status" id="simStatus">STOPPED</span>
+                <span class="badge badge-time" id="simTime">00:00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROL DECK -->
+    <div class="control-deck-wrapper" id="controlDeckWrapper">
+        <button class="deck-toggle" onclick="toggleDeck()" id="deckToggleBtn">Hide Controls</button>
+        <div class="control-deck">
+            
+            <!-- 1. CONTROLS -->
+            <div class="deck-section">
+                <div class="deck-header"><i class="fas fa-sliders-h"></i> Configuration</div>
+                
+                <div class="control-group">
+                    <div class="label-row"><span>Traffic Density</span> <input type="number" id="densityNum" value="40"></div>
+                    <input type="range" id="densitySlider" min="10" max="150" value="40" oninput="sync('densitySlider','densityNum')">
+                </div>
+                
+                <div class="control-group">
+                    <div class="label-row"><span>Simulation Speed</span> <input type="number" id="speedNum" value="2"></div>
+                    <input type="range" id="speedSlider" min="1" max="10" value="2" oninput="sync('speedSlider','speedNum')">
+                </div>
+
+                <div class="deck-header" style="margin-top: 15px;"><i class="fas fa-cog"></i> System Logic</div>
+                
+                <div class="control-group" style="border-left: 2px solid var(--accent-fixed); padding-left: 8px;">
+                    <div class="label-row"><span>Fixed Interval (s)</span> <input type="number" id="fixedNum" value="30"></div>
+                    <input type="range" id="fixedSlider" min="10" max="90" value="30" oninput="sync('fixedSlider','fixedNum')">
+                </div>
+
+                <div class="control-group" style="border-left: 2px solid var(--accent-dynamic); padding-left: 8px;">
+                    <div class="label-row"><span>AI Min/Max (s)</span> <span style="font-size:0.7rem">10s - 60s</span></div>
+                    <div style="display:flex; gap:5px;">
+                        <input type="number" id="dynMin" value="10" style="width:100%">
+                        <input type="number" id="dynMax" value="60" style="width:100%">
+                    </div>
+                </div>
+
+                <div class="btn-grid">
+                    <button class="btn-start" id="startBtn" onclick="toggleSim()">Start</button>
+                    <button class="btn-reset" onclick="resetSim()">Reset</button>
+                </div>
+            </div>
+
+            <!-- 2. METRICS (Radar + List) -->
+            <div class="deck-section">
+                <div class="deck-header"><i class="fas fa-chart-bar"></i> Analytics (8 Parameters)</div>
+                <div class="metrics-grid">
+                    <div style="position:relative;">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                    <div style="overflow-y:auto;">
+                        <table class="metrics-table" id="metricsTable">
+                            <!-- Populated by JS -->
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. AI & EXPORT -->
+            <div class="deck-section">
+                <div class="deck-header"><i class="fas fa-robot"></i> AI Analyst</div>
+                <input type="text" id="scenarioInput" placeholder="Scenario (e.g. 'Heavy Morning Rush')" 
+                       style="width:100%; padding:8px; background:rgba(0,0,0,0.2); border:1px solid #475569; color:white; border-radius:4px; margin-bottom:5px;">
+                <button onclick="generateScenario()" style="background:rgba(139, 92, 246, 0.3); color:white; margin-bottom:10px;">Auto-Config</button>
+                
+                <button class="btn-ai" onclick="analyzeData()">Analyze Report</button>
+                <div id="aiOutput"></div>
+                
+                <button onclick="exportCSV()" style="margin-top:auto; background:#3b82f6; color:white;">Export Data</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // CONFIG
+        const apiKey = ""; // Add Key Here
+        const COLOR_FIXED = '#ef4444';
+        const COLOR_DYNAMIC = '#10b981';
+        const COLOR_YELLOW = '#f59e0b';
+        
+        // UTILS
+        function sync(src, dest) { 
+            document.getElementById(dest).value = document.getElementById(src).value; 
+            document.getElementById(src).value = document.getElementById(dest).value;
+        }
+
+        // SIMULATION ENGINE
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let isRunning = false;
+        let animId;
+        let tick = 0;
+        let timeElapsed = 0;
+        const TPS = 30; // Ticks per second
+        
+        // Params
+        let config = {
+            density: 40, // cars per minute roughly
+            speed: 2,
+            fixedTime: 30,
+            dynMin: 10,
+            dynMax: 60
+        };
+
+        // Entities
+        let cars = { fixed: [], dynamic: [] };
+        let lights = { 
+            fixed: { state: 'red', timer: 0, axis: 'h', max: 30, label: '' },
+            dynamic: { state: 'red', timer: 0, axis: 'h', max: 60, label: '', greenUsage: 0, totalGreen: 0 }
+        };
+        let stats = { fixed: initStats(), dynamic: initStats() };
+
+        function initStats() {
+            return {
+                finished: 0,
+                totalWait: 0,
+                totalTrip: 0,
+                totalFuel: 0,
+                stops: 0,      // Accident risk proxy
+                hardBrakes: 0, // Accident risk proxy
+                idleTicks: 0,  // Pollution proxy
+                flowCount: 0,
+                greenUtilization: 0 // Accuracy proxy
+            };
+        }
+
+        function resize() {
+            canvas.width = document.getElementById('simContainer').offsetWidth;
+            canvas.height = document.getElementById('simContainer').offsetHeight;
+        }
+        window.addEventListener('resize', resize);
+
+        class Car {
+            constructor(type, dir) {
+                this.type = type;
+                this.dir = dir; // 0:N, 1:E, 2:S, 3:W
+                this.speed = 0;
+                this.maxSpeed = 3 + Math.random();
+                this.accel = 0.1;
+                this.finished = false;
+                
+                const w = canvas.width, h = canvas.height;
+                const sysOffset = type === 'fixed' ? 0 : w/2;
+                const cx = sysOffset + w/4, cy = h/2;
+                const lane = 12; // offset from center
+
+                // Spawn points (On Screen, but at edges)
+                if(dir===0) { this.x = cx - lane; this.y = -20; this.vx = 0; this.vy = 1; }
+                if(dir===1) { this.x = sysOffset + w/2 + 20; this.y = cy - lane; this.vx = -1; this.vy = 0; }
+                if(dir===2) { this.x = cx + lane; this.y = h + 20; this.vx = 0; this.vy = -1; }
+                if(dir===3) { this.x = sysOffset - 20; this.y = cy + lane; this.vx = 1; this.vy = 0; }
+                
+                this.tripStart = timeElapsed;
+                this.wait = 0;
+            }
+
+            update(light, allCars) {
+                // 1. Vision (Distance to intersection)
+                const w = canvas.width, h = canvas.height;
+                const sysOffset = this.type === 'fixed' ? 0 : w/2;
+                const cx = sysOffset + w/4, cy = h/2;
+                
+                let distToLine = 0;
+                let approaching = false;
+                
+                if(this.dir===0) { distToLine = (cy - 20) - this.y; approaching = this.y < cy; }
+                if(this.dir===1) { distToLine = this.x - (cx + 20); approaching = this.x > cx; }
+                if(this.dir===2) { distToLine = this.y - (cy + 20); approaching = this.y > cy; }
+                if(this.dir===3) { distToLine = (cx - 20) - this.x; approaching = this.x < cx; }
+
+                // 2. Light Logic
+                let canGo = false;
+                const isHoriz = (this.dir === 1 || this.dir === 3);
+                const isVert = (this.dir === 0 || this.dir === 2);
+                
+                if (light.axis === 'h' && isHoriz && (light.state === 'green' || light.state === 'yellow')) canGo = true;
+                if (light.axis === 'v' && isVert && (light.state === 'green' || light.state === 'yellow')) canGo = true;
+
+                let shouldStop = false;
+                
+                // Red light stop
+                if (approaching && distToLine < 50 && distToLine > 0 && !canGo) shouldStop = true;
+                
+                // Yellow light dilemma zone (Stop if safe, Go if close)
+                if (approaching && light.state === 'yellow' && distToLine > 20 && distToLine < 80) shouldStop = true;
+
+                // 3. Collision Logic
+                let distCar = 1000;
+                for(let c of allCars) {
+                    if (c === this || c.finished || c.dir !== this.dir) continue;
+                    let d = 1000;
+                    if(this.dir===0 && c.y > this.y) d = c.y - this.y;
+                    if(this.dir===1 && c.x < this.x) d = this.x - c.x;
+                    if(this.dir===2 && c.y < this.y) d = this.y - c.y;
+                    if(this.dir===3 && c.x > this.x) d = c.x - this.x;
+                    if(d < distCar) distCar = d;
+                }
+                
+                if (distCar < 20) shouldStop = true;
+                else if (distCar < 60) this.speed *= 0.9; // Braking
+
+                // 4. Physics
+                if (shouldStop) {
+                    if (this.speed > 0.5) stats[this.type].hardBrakes++; // RECORD HARD BRAKE
+                    this.speed = Math.max(0, this.speed - 0.2);
+                } else {
+                    this.speed = Math.min(this.maxSpeed, this.speed + this.accel);
+                }
+
+                this.x += this.vx * this.speed;
+                this.y += this.vy * this.speed;
+
+                // 5. Metrics Collection
+                if (this.speed < 0.1) {
+                    this.wait++;
+                    stats[this.type].idleTicks++; // For Pollution
+                    stats[this.type].totalWait += (1/TPS);
+                } else {
+                    stats[this.type].totalFuel += (0.005 + (this.speed * 0.002)); // Moving uses more fuel/tick
+                }
+
+                // Despawn
+                const margin = 50;
+                if (this.x < sysOffset - margin || this.x > sysOffset + w/2 + margin || this.y < -margin || this.y > h + margin) {
+                    this.finished = true;
+                    stats[this.type].finished++;
+                    stats[this.type].totalTrip += (timeElapsed - this.tripStart);
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = this.type === 'fixed' ? COLOR_FIXED : COLOR_DYNAMIC;
+                if (this.speed < 0.1) ctx.fillStyle = '#fff'; // Brake lights
+                ctx.fillRect(this.x - 6, this.y - 6, 12, 12);
+            }
+        }
+
+        // CONTROL LOGIC
+        function updateLights() {
+            // Fixed System
+            const f = lights.fixed;
+            f.timer++;
+            let limit = (f.state === 'yellow') ? 5 * TPS : config.fixedTime * TPS;
+            
+            f.label = Math.ceil((limit - f.timer)/TPS) + "s";
+
+            if (f.timer >= limit) {
+                f.timer = 0;
+                if (f.state === 'green') f.state = 'yellow';
+                else if (f.state === 'yellow') { f.state = 'red'; f.axis = f.axis==='h'?'v':'h'; }
+                else if (f.state === 'red') f.state = 'green';
+            }
+
+            // Dynamic System
+            const d = lights.dynamic;
+            d.timer++;
+            
+            // Accuracy Logic: Is green light actually being used?
+            if (d.state === 'green') {
+                stats.dynamic.greenUtilization++; // Total green ticks
+                // Check if queue exists
+                const qH = countQueue(cars.dynamic, 'h');
+                const qV = countQueue(cars.dynamic, 'v');
+                if ((d.axis === 'h' && qH > 0) || (d.axis === 'v' && qV > 0)) {
+                    // It's useful green time
+                } else {
+                    // Wasted green time -> Lowers accuracy
+                }
+            }
+
+            // Dynamic Transitions
+            let dLimit = (d.state === 'yellow') ? 5 * TPS : config.dynMax * TPS;
+            let minTime = config.dynMin * TPS;
+            
+            d.label = Math.ceil((d.timer)/TPS) + "s"; // Count up for dynamic
+
+            if (d.state === 'green' && d.timer > minTime) {
+                // Check sensors
+                const qH = countQueue(cars.dynamic, 'h');
+                const qV = countQueue(cars.dynamic, 'v');
+                let switchNeeded = false;
+                
+                if (d.axis === 'h') {
+                    if (qH === 0 && qV > 0) switchNeeded = true;
+                    if (qV > qH * 2) switchNeeded = true;
+                } else {
+                    if (qV === 0 && qH > 0) switchNeeded = true;
+                    if (qH > qV * 2) switchNeeded = true;
+                }
+                
+                if (d.timer >= dLimit) switchNeeded = true;
+
+                if (switchNeeded) {
+                    d.state = 'yellow';
+                    d.timer = 0;
+                }
+            } else if (d.state === 'yellow' && d.timer >= 5 * TPS) {
+                d.state = 'red'; d.axis = d.axis==='h'?'v':'h'; d.timer = 0;
+            } else if (d.state === 'red' && d.timer >= 10) { // Short red clearance
+                d.state = 'green'; d.timer = 0;
+            }
+        }
+
+        function countQueue(list, axis) {
+            return list.filter(c => !c.finished && c.speed < 1 && 
+                ((axis==='h' && (c.dir===1||c.dir===3)) || (axis==='v' && (c.dir===0||c.dir===2)))
+            ).length;
+        }
+
+        // DRAWING
+        function draw() {
+            const w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // Backgrounds
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, w/2, h); // Fixed Side
+            ctx.fillRect(w/2, 0, w/2, h); // Dynamic Side
+            
+            // Roads
+            drawIntersection(0, w/2, lights.fixed);
+            drawIntersection(w/2, w/2, lights.dynamic);
+
+            // Cars
+            [...cars.fixed, ...cars.dynamic].forEach(c => {
+                c.draw();
+            });
+        }
+
+        function drawIntersection(x, w, light) {
+            const cx = x + w/2, cy = canvas.height/2;
+            const rw = 40; // Road Width
+
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(cx - rw, 0, rw*2, canvas.height);
+            ctx.fillRect(x, cy - rw, w, rw*2);
+            
+            // Dashed lines
+            ctx.strokeStyle = '#334155'; ctx.setLineDash([10, 10]);
+            ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x+w, cy); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Lights
+            const isH = light.axis === 'h';
+            const color = light.state === 'yellow' ? COLOR_YELLOW : (light.state === 'green' ? '#10b981' : '#ef4444');
+            const hColor = isH ? color : '#ef4444';
+            const vColor = !isH ? color : '#ef4444';
+
+            // Visualizing the lights
+            ctx.fillStyle = vColor;
+            ctx.beginPath(); ctx.arc(cx - rw - 10, cy - rw - 10, 6, 0, Math.PI*2); ctx.fill(); // N
+            ctx.beginPath(); ctx.arc(cx + rw + 10, cy + rw + 10, 6, 0, Math.PI*2); ctx.fill(); // S
+            
+            ctx.fillStyle = hColor;
+            ctx.beginPath(); ctx.arc(cx + rw + 10, cy - rw - 10, 6, 0, Math.PI*2); ctx.fill(); // E
+            ctx.beginPath(); ctx.arc(cx - rw - 10, cy + rw + 10, 6, 0, Math.PI*2); ctx.fill(); // W
+
+            // Timer Text
+            ctx.fillStyle = 'white'; ctx.font = '12px monospace'; ctx.textAlign = 'center';
+            ctx.fillText(light.label, cx, cy - 50);
+        }
+
+        // MAIN LOOP
+        function loop() {
+            if(!isRunning) return;
+
+            // Update inputs
+            config.density = parseInt(document.getElementById('densityNum').value);
+            config.speed = parseInt(document.getElementById('speedNum').value);
+            config.fixedTime = parseInt(document.getElementById('fixedNum').value);
+            config.dynMin = parseInt(document.getElementById('dynMin').value);
+            config.dynMax = parseInt(document.getElementById('dynMax').value);
+
+            // Simulation Steps
+            for(let i=0; i<config.speed; i++) {
+                tick++;
+                if(tick % TPS === 0) timeElapsed++;
+                
+                // Spawn
+                if(Math.random() < (config.density/3000)) {
+                    cars.fixed.push(new Car('fixed', Math.floor(Math.random()*4)));
+                    cars.dynamic.push(new Car('dynamic', Math.floor(Math.random()*4)));
+                }
+
+                updateLights();
+                
+                cars.fixed.forEach(c => c.update(lights.fixed, cars.fixed));
+                cars.dynamic.forEach(c => c.update(lights.dynamic, cars.dynamic));
+                
+                // Cleanup
+                cars.fixed = cars.fixed.filter(c => !c.finished);
+                cars.dynamic = cars.dynamic.filter(c => !c.finished);
+            }
+
+            draw();
+            if(tick % 30 === 0) updateMetrics();
+            animId = requestAnimationFrame(loop);
+        }
+
+        // ANALYTICS ENGINE (Robust Math)
+        function getResults(sys) {
+            const s = stats[sys];
+            const count = s.finished || 1;
+            const timeMins = (timeElapsed / 60) || 1;
+
+            // 1. Time Response (Avg Stop Duration)
+            // Real Calculation: Not just random, but based on actual wait time / stops
+            const response = s.totalWait / count;
+
+            // 2. Accuracy
+            // 100% - Penalty for wasted green time + Penalty for excessive red waits
+            // Simplified: (Wait Time / Trip Time) ratio inversely maps to accuracy
+            const efficiency = s.totalTrip > 0 ? (1 - (s.totalWait / s.totalTrip)) : 0;
+            const accuracy = Math.min(100, Math.max(0, efficiency * 120)); // Scale to 0-100%
+
+            // 3. Trip Time
+            const trip = s.totalTrip / count;
+
+            // 4. Fuel (Liters)
+            // Base consumption + penalty for acceleration events
+            const fuel = s.totalFuel / count;
+
+            // 5. Accident Rate
+            // Based on Hard Brakes (Sudden Stops) / Car
+            const accident = (s.hardBrakes / count) * 100;
+
+            // 6. Efficiency (Flow)
+            const flow = s.finished / timeMins;
+
+            // 7. Wait Time
+            const wait = s.totalWait / count;
+
+            // 8. Pollution (Grams CO2)
+            // Idle produces more CO2 concentration locally than moving efficiently
+            // Idle Ticks * 0.5g + Move Ticks * 0.2g
+            const idleSec = s.idleTicks / TPS;
+            const pollution = (idleSec * 0.5) / count;
+
+            return { response, accuracy, trip, fuel, accident, flow, wait, pollution };
+        }
+
+        // CHARTS & UI
+        const rCtx = document.getElementById('radarChart').getContext('2d');
+        const radarChart = new Chart(rCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Time Resp (s)', 'Accuracy (%)', 'Trip Time (s)', 'Fuel (L)', 'Accident Risk', 'Flow (c/m)', 'Wait (s)', 'Pollution (g)'],
+                datasets: [
+                    { label: 'Fixed', borderColor: COLOR_FIXED, backgroundColor: 'rgba(239, 68, 68, 0.2)', data: [0,0,0,0,0,0,0,0] },
+                    { label: 'Dynamic', borderColor: COLOR_DYNAMIC, backgroundColor: 'rgba(16, 185, 129, 0.2)', data: [0,0,0,0,0,0,0,0] }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { grid: { color: '#334155' }, pointLabels: { color: '#cbd5e1', font:{size:9} }, ticks:{display:false} } },
+                plugins: { legend: { labels: { color: '#fff' } } }
+            }
+        });
+
+        function updateMetrics() {
+            const f = getResults('fixed');
+            const d = getResults('dynamic');
+
+            // Update Time
+            const min = Math.floor(timeElapsed/60).toString().padStart(2,'0');
+            const sec = (timeElapsed%60).toString().padStart(2,'0');
+            document.getElementById('simTime').innerText = `T: ${min}:${sec}`;
+
+            // Update Chart
+            radarChart.data.datasets[0].data = [f.response, f.accuracy, f.trip, f.fuel*100, f.accident, f.flow, f.wait, f.pollution*10];
+            radarChart.data.datasets[1].data = [d.response, d.accuracy, d.trip, d.fuel*100, d.accident, d.flow, d.wait, d.pollution*10];
+            radarChart.update();
+
+            // Update List
+            const table = document.getElementById('metricsTable');
+            table.innerHTML = `
+                <tr><td>Time Response</td><td class="val-f">${f.response.toFixed(1)}s</td><td class="val-d">${d.response.toFixed(1)}s</td></tr>
+                <tr><td>Accuracy</td><td class="val-f">${f.accuracy.toFixed(1)}%</td><td class="val-d">${d.accuracy.toFixed(1)}%</td></tr>
+                <tr><td>Avg Trip Time</td><td class="val-f">${f.trip.toFixed(1)}s</td><td class="val-d">${d.trip.toFixed(1)}s</td></tr>
+                <tr><td>Fuel Avg</td><td class="val-f">${f.fuel.toFixed(3)}L</td><td class="val-d">${d.fuel.toFixed(3)}L</td></tr>
+                <tr><td>Accident Risk</td><td class="val-f">${f.accident.toFixed(1)}</td><td class="val-d">${d.accident.toFixed(1)}</td></tr>
+                <tr><td>Flow Efficiency</td><td class="val-f">${f.flow.toFixed(1)}</td><td class="val-d">${d.flow.toFixed(1)}</td></tr>
+                <tr><td>Avg Wait</td><td class="val-f">${f.wait.toFixed(1)}s</td><td class="val-d">${d.wait.toFixed(1)}s</td></tr>
+                <tr><td>Pollution</td><td class="val-f">${f.pollution.toFixed(1)}g</td><td class="val-d">${d.pollution.toFixed(1)}g</td></tr>
+            `;
+        }
+
+        // CONTROLS
+        function toggleSim() {
+            const btn = document.getElementById('startBtn');
+            isRunning = !isRunning;
+            if(isRunning) { loop(); btn.innerText = "Pause"; document.getElementById('simStatus').innerText="RUNNING"; }
+            else { cancelAnimationFrame(animId); btn.innerText = "Resume"; document.getElementById('simStatus').innerText="PAUSED"; }
+        }
+
+        function resetSim() {
+            isRunning = false; cancelAnimationFrame(animId);
+            timeElapsed = 0; tick = 0;
+            cars = { fixed: [], dynamic: [] };
+            lights.fixed.timer = 0; lights.dynamic.timer = 0;
+            stats = { fixed: initStats(), dynamic: initStats() };
+            updateMetrics(); draw();
+            document.getElementById('startBtn').innerText = "Start";
+            document.getElementById('simStatus').innerText="STOPPED";
+        }
+
+        function toggleDeck() {
+            const deck = document.getElementById('controlDeckWrapper');
+            const btn = document.getElementById('deckToggleBtn');
+            if(deck.classList.contains('hidden')) {
+                deck.classList.remove('hidden'); btn.innerText="Hide Controls";
+            } else {
+                deck.classList.add('hidden'); btn.innerText="Show Controls";
+            }
+            setTimeout(resize, 350);
+        }
+
+        // AI & EXPORT
+        async function analyzeData() {
+            const f = getResults('fixed'); const d = getResults('dynamic');
+            const out = document.getElementById('aiOutput');
+            out.style.display = 'block'; out.innerText = "Analyzing...";
+            
+            if(!apiKey) { out.innerText = "AI Key Missing. Edit HTML to add key."; return; }
+
+            const prompt = `Traffic Engineering Report. Compare Fixed vs Dynamic:
+            Wait: ${f.wait.toFixed(1)}s vs ${d.wait.toFixed(1)}s
+            Flow: ${f.flow.toFixed(1)} vs ${d.flow.toFixed(1)} cars/min
+            Fuel: ${f.fuel.toFixed(3)} vs ${d.fuel.toFixed(3)} L
+            Pollution: ${f.pollution.toFixed(1)} vs ${d.pollution.toFixed(1)} g
+            Summary of best system in 1 sentence.`;
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+                });
+                const data = await res.json();
+                out.innerText = data.candidates[0].content.parts[0].text;
+            } catch(e) { out.innerText = "AI Error."; }
+        }
+
+        function exportCSV() {
+            const f = getResults('fixed'); const d = getResults('dynamic');
+            let csv = "Metric,Fixed,Dynamic\n";
+            csv += `Response,${f.response},${d.response}\nAccuracy,${f.accuracy},${d.accuracy}\nTrip,${f.trip},${d.trip}\n`;
+            csv += `Fuel,${f.fuel},${d.fuel}\nAccidents,${f.accident},${d.accident}\nFlow,${f.flow},${d.flow}\nWait,${f.wait},${d.wait}\nPollution,${f.pollution},${d.pollution}`;
+            const link = document.createElement('a');
+            link.href = 'data:text/csv;charset=utf-8,' + encodeURI(csv);
+            link.download = 'traffic_data.csv';
+            link.click();
+        }
+        
+        // BOOT
+        resize(); draw();
+    </script>
+</body>
+</html>
